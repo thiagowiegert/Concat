@@ -56,6 +56,7 @@ jobs:
       # keeps en.json the inventory of them and every shipped language
       # keyed off it. See TRANSLATING.md.
       - run: python3 scripts/ci/test-android-service.py
+        if: ${{ !cancelled() }}
       - run: python3 scripts/locales.py --check
         if: ${{ !cancelled() }}
       # The models Concat downloads are mirrored onto a release of this

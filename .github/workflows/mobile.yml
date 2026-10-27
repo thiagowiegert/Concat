@@ -145,7 +145,7 @@ jobs:
       # whisper.cpp, Skia and Slint's backend each read it by their own
       # name from what mobile-env.sh exports.
       - name: Android API 35 for the export service
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"'
 
       - name: System libraries
         run: sudo apt-get update && sudo apt-get install -y cmake libclang-dev

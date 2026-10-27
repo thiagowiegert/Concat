@@ -107,7 +107,7 @@ public final class ConcatExportService extends Service {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         return new Notification.Builder(this, CHANNEL)
                 .setSmallIcon(android.R.drawable.stat_sys_upload)
-                .setContentTitle("Concat � Exporting video").setContentText(session.stage)
+                .setContentTitle("Concat - Exporting video").setContentText(session.stage)
                 .setContentIntent(content).setOngoing(true).setOnlyAlertOnce(true)
                 .setCategory(Notification.CATEGORY_PROGRESS)
                 .setProgress(100, session.percent, session.percent == 0)
