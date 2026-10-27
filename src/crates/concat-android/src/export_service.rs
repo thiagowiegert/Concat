@@ -107,12 +107,11 @@ pub(super) unsafe extern "system" fn is_cancelled(
     _: *mut sys::JNIEnv,
     _: sys::jclass,
 ) -> sys::jboolean {
-    let cancelled = ACTIVE
+    ACTIVE
         .lock()
         .map(|slot| {
             slot.as_ref()
                 .is_none_or(|(_, cancel)| cancel.load(Ordering::Relaxed))
         })
-        .unwrap_or(true);
-    u8::from(cancelled)
+        .unwrap_or(true)
 }
