@@ -55,7 +55,7 @@ pub use platform::{
     ExportPublisher, FilePicker, PickKinds, install_export_publisher, install_file_picker,
 };
 #[cfg(target_os = "android")]
-pub use platform::{LinkOpener, install_link_opener};
+pub use platform::{ExportService, LinkOpener, install_export_service, install_link_opener};
 #[cfg(any(target_os = "android", target_os = "ios"))]
 pub use platform::{MicrophoneAccess, install_microphone_access};
 mod panes;
@@ -2912,8 +2912,16 @@ mod tests {
     #[test]
     fn a_failed_save_keeps_the_real_session_and_its_edit() {
         let scratch = Scratch::new("session");
-        let info = projects::create(&scratch.location(), "Closing", 1920, 1080, 30, 1, [0, 0, 0, 255])
-            .expect("creates the project");
+        let info = projects::create(
+            &scratch.location(),
+            "Closing",
+            1920,
+            1080,
+            30,
+            1,
+            [0, 0, 0, 255],
+        )
+        .expect("creates the project");
         let manifest = projects::manifest_path(Path::new(&info.path));
 
         // A real session, saved once; then an edit that lives in memory
@@ -2990,8 +2998,16 @@ mod tests {
     #[test]
     fn a_delayed_autosave_cannot_replace_the_close_snapshot() {
         let scratch = Scratch::new("ordered-close");
-        let info = projects::create(&scratch.location(), "Ordered", 1920, 1080, 30, 1, [0, 0, 0, 255])
-            .expect("creates the project");
+        let info = projects::create(
+            &scratch.location(),
+            "Ordered",
+            1920,
+            1080,
+            30,
+            1,
+            [0, 0, 0, 255],
+        )
+        .expect("creates the project");
         let mut session = Session::open_info(&info).expect("opens the session");
         let (old_path, old_document) = session.prepare_save(None);
         let old_ticket = projects::ticket();
