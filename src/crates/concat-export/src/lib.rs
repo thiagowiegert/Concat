@@ -1624,11 +1624,11 @@ fn ground_layer(ground: Frame) -> PlannedLayer {
 }
 
 /// The compositor an export draws with when its caller lends none: a
-/// device of its own on the machine's GPU, or on its software adapter where
-/// it has none (see [`WgpuCompositor::new`]). The one error is a machine
-/// with neither, which is said in words a person can act on.
+/// sibling of the headless preview compositor. Keep independent render
+/// caches while sharing the device that already drew the API preview.
+/// Opening a second device can fail on Windows even when the first works.
 fn best_compositor() -> Result<WgpuCompositor, String> {
-    WgpuCompositor::new().ok_or_else(|| NO_RENDERER.to_owned())
+    headless(|gpu| gpu.sibling())
 }
 
 /// What an export or a preview says on a machine that offers no GPU and no
@@ -3853,8 +3853,16 @@ mod tests {
             let frame = decoder.next_frame().expect("decodes").expect("a frame");
             let corner = frame.pixel(2, 2).expect("a pixel");
             let middle = frame.pixel(32, 32).expect("a pixel");
-            assert!(corner[3] <= 4, "{}: the corner is {corner:?}", codec.label());
-            assert!(middle[3] >= 250, "{}: the middle is {middle:?}", codec.label());
+            assert!(
+                corner[3] <= 4,
+                "{}: the corner is {corner:?}",
+                codec.label()
+            );
+            assert!(
+                middle[3] >= 250,
+                "{}: the middle is {middle:?}",
+                codec.label()
+            );
             assert!(
                 middle[0].abs_diff(200) <= 12 && middle[1].abs_diff(40) <= 12,
                 "{}: the middle is {middle:?}",
@@ -3884,7 +3892,10 @@ mod tests {
         let middle = frame.pixel(32, 32).expect("a pixel");
         assert!((130..=170).contains(&middle[0]), "the middle is {middle:?}");
         let corner = frame.pixel(2, 2).expect("a pixel");
-        assert!(corner[0] <= 8 && corner[3] == 255, "the corner is {corner:?}");
+        assert!(
+            corner[0] <= 8 && corner[3] == 255,
+            "the corner is {corner:?}"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

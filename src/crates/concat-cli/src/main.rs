@@ -126,6 +126,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     // A crash names the module it happened in on standard error, as the
     // window's does; see concat-host's crash.rs.
     concat_host::crash::catch();
+    // The LAN companion captures stderr in engine.log; keep JSON-RPC stdout clean.
+    concat_host::logs::open_console(None)?;
     match Cli::parse().command {
         Command::Probe { path } => probe(&path),
         Command::Render {

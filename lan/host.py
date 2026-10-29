@@ -529,7 +529,14 @@ def main():
     try:
         if args.no_gui:
             print(json.dumps({'urls':urls,'local':local,'code':server.code,'workspace':str(args.workspace)},ensure_ascii=False),flush=True)
-            while True:time.sleep(1)
+            stopped = threading.Event()
+            def read_console():
+                if sys.stdin is not None:
+                    for line in sys.stdin:
+                        if line.strip().lower() == 'stop':
+                            stopped.set();break
+            threading.Thread(target=read_console, daemon=True).start()
+            while not stopped.wait(1):pass
         else:
             import tkinter as tk
             from tkinter import messagebox

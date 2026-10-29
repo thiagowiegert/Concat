@@ -15,7 +15,7 @@ p=argparse.ArgumentParser();p.add_argument('--host',type=Path,required=True);p.a
 with tempfile.TemporaryDirectory() as folder:
     root=Path(folder);source=root/'sample.mp4'
     subprocess.run([args.ffmpeg,'-v','error','-f','lavfi','-i','testsrc2=size=320x180:rate=24','-f','lavfi','-i','sine=frequency=440:sample_rate=48000','-t','3','-c:v','libx264','-pix_fmt','yuv420p','-c:a','aac',str(source)],check=True,timeout=60)
-    proc=subprocess.Popen([str(args.host.resolve()),'--no-gui','--bind','127.0.0.1','--port','0','--workspace',str(root/'workspace')],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,encoding='utf-8')
+    proc=subprocess.Popen([str(args.host.resolve()),'--no-gui','--bind','127.0.0.1','--port','0','--workspace',str(root/'workspace')],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,encoding='utf-8')
     try:
         with ThreadPoolExecutor(max_workers=1) as executor:
             future=executor.submit(proc.stdout.readline)
@@ -52,6 +52,8 @@ with tempfile.TemporaryDirectory() as folder:
             saved=json.loads(journal.read_text(encoding='utf-8'))[job['id']]
             if saved['state']!='running':break
             time.sleep(1)
+        if saved['state'] != 'done':
+            print((root/'workspace'/'engine.log').read_text(encoding='utf-8',errors='replace')[-12000:])
         assert saved['state']=='done',saved
         output=root/'download.mp4';output.write_bytes(request('/download/'+job['id']))
         probe=json.loads(subprocess.check_output([args.ffprobe,'-v','error','-show_streams','-show_format','-of','json',str(output)],timeout=30))
@@ -64,6 +66,10 @@ with tempfile.TemporaryDirectory() as folder:
         assert api('open',project=project)['view']['project']['timelines'][0]['clips']
         print('PASS: packaged host, pairing, upload, edit/undo/redo, PNG preview, detached export, audio/video download and reconnect')
     finally:
-        proc.terminate()
-        try:proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:proc.kill();proc.wait()
+        if proc.poll() is None:
+            try:
+                proc.stdin.write('stop\n');proc.stdin.flush();proc.wait(timeout=15)
+            except (BrokenPipeError, subprocess.TimeoutExpired):
+                # Test-only process tree: a forced host exit must not leave its engine behind.
+                subprocess.run(['taskkill','/PID',str(proc.pid),'/T','/F'],capture_output=True)
+                proc.wait(timeout=10)
