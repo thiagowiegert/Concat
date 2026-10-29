@@ -44,7 +44,13 @@ with tempfile.TemporaryDirectory() as folder:
         mutate('edit',command={'op':'batch','commands':[{'op':'updateClip','clipId':clip['id'],'patch':{'volume':.75}}, {'op':'trimClip','clipId':clip['id'],'edge':'end','delta':-.5}]})
         mutate('undo');mutate('redo')
         picture=api('preview',project=project,time=.5)
-        assert base64.b64decode(picture['png']).startswith(b'\x89PNG\r\n\x1a\n')
+        preview=root/'preview.png';preview.write_bytes(base64.b64decode(picture['png']))
+        assert preview.read_bytes().startswith(b'\x89PNG\r\n\x1a\n')
+        def check_picture(path):
+            pixels=subprocess.check_output([args.ffmpeg,'-v','error','-i',str(path),'-frames:v','1','-vf','scale=32:18','-f','rawvideo','-pix_fmt','rgb24','pipe:1'],timeout=30)
+            assert len(pixels)==32*18*3, 'incomplete decoded frame'
+            assert max(pixels)-min(pixels)>80 and sum(pixels)/len(pixels)>15, 'rendered frame is blank'
+        check_picture(preview)
         job=api('export',project=project)
         # No browser requests while the worker runs; its journal must reach done independently.
         journal=root/'workspace'/'jobs.json';deadline=time.monotonic()+180
@@ -59,12 +65,17 @@ with tempfile.TemporaryDirectory() as folder:
         probe=json.loads(subprocess.check_output([args.ffprobe,'-v','error','-show_streams','-show_format','-of','json',str(output)],timeout=30))
         assert {s['codec_type'] for s in probe['streams']} >= {'video','audio'},probe
         assert 2.3<float(probe['format']['duration'])<2.8,probe
+        check_picture(output)
         # Reconnect in a fresh browser session to find the completed job and saved edit.
         client=build_opener(HTTPCookieProcessor(http.cookiejar.CookieJar()))
         post('/pair',{'code':config['code']})
         assert any(j['id']==job['id'] and j['state']=='done' for j in api('info')['jobs'])
         assert api('open',project=project)['view']['project']['timelines'][0]['clips']
         print('PASS: packaged host, pairing, upload, edit/undo/redo, PNG preview, detached export, audio/video download and reconnect')
+    except Exception:
+        log=root/'workspace'/'engine.log'
+        if log.exists(): print(log.read_text(encoding='utf-8',errors='replace')[-16000:])
+        raise
     finally:
         if proc.poll() is None:
             try:

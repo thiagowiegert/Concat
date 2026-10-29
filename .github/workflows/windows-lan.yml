@@ -44,14 +44,14 @@ env:
 
 jobs:
   windows:
-    runs-on: windows-2022
+    runs-on: windows-2025
     timeout-minutes: 120
     strategy:
       matrix:
         include:
           - platform: windows
             arch: x86_64
-            os: windows-2022
+            os: windows-2025
             target: x86_64-pc-windows-msvc
             ffmpeg: win64
             sherpa: win-x64

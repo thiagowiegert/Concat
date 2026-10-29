@@ -1186,7 +1186,7 @@ pub fn render_on(
     let side = 1..=concat_core::frame::MAX_SIDE;
     if !side.contains(&request.width) || !side.contains(&request.height) {
         return Err(format!(
-            "{}×{} is not a frame size a video can have; the most is {} a side",
+            "{}Ã—{} is not a frame size a video can have; the most is {} a side",
             request.width,
             request.height,
             concat_core::frame::MAX_SIDE
@@ -1724,13 +1724,18 @@ fn headless<T>(draw: impl FnOnce(&mut WgpuCompositor) -> T) -> Result<T, String>
     let mut gpu = slot.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     // A device that died under an earlier preview is not kept: every
     // preview after it would be black.
-    if gpu.lost()
-        && let Some(fresh) = WgpuCompositor::new()
-    {
+    if gpu.lost() {
+        let fresh = WgpuCompositor::new().ok_or_else(|| {
+            format!("the preview device was lost, and {NO_RENDERER}")
+        })?;
         log::warn!("previews: the GPU device was lost; drawing on a fresh one");
         *gpu = fresh;
     }
-    Ok(draw(&mut gpu))
+    let result = draw(&mut gpu);
+    if gpu.lost() {
+        return Err("the GPU device was lost while drawing the preview; try again".to_owned());
+    }
+    Ok(result)
 }
 
 /// Composites every frame of the timeline into a soundless video file.
@@ -1763,7 +1768,7 @@ fn render_picture(
     let most = compositor.max_side();
     if request.width > most || request.height > most {
         return Err(format!(
-            "{}×{} is more than {} can draw; the most it takes is {most} a side",
+            "{}Ã—{} is more than {} can draw; the most it takes is {most} a side",
             request.width, request.height, adapter.name
         ));
     }
