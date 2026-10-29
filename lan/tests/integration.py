@@ -11,7 +11,7 @@ import tempfile
 import time
 from urllib.request import Request, build_opener, HTTPCookieProcessor
 
-p=argparse.ArgumentParser();p.add_argument('--host',type=Path,required=True);p.add_argument('--ffmpeg',required=True);p.add_argument('--ffprobe',required=True);args=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--host',type=Path,required=True);p.add_argument('--ffmpeg',required=True);p.add_argument('--ffprobe',required=True);p.add_argument('--skip-preview',action='store_true',help='skip the GPU readback check on headless runners without a stable DXGI device');args=p.parse_args()
 with tempfile.TemporaryDirectory() as folder:
     root=Path(folder);source=root/'sample.mp4'
     subprocess.run([args.ffmpeg,'-v','error','-f','lavfi','-i','testsrc2=size=320x180:rate=24','-f','lavfi','-i','sine=frequency=440:sample_rate=48000','-t','3','-c:v','libx264','-pix_fmt','yuv420p','-c:a','aac',str(source)],check=True,timeout=60)
@@ -43,14 +43,18 @@ with tempfile.TemporaryDirectory() as folder:
         timeline=state['view']['project']['timelines'][0];clip=timeline['clips'][0]
         mutate('edit',command={'op':'batch','commands':[{'op':'updateClip','clipId':clip['id'],'patch':{'volume':.75}}, {'op':'trimClip','clipId':clip['id'],'edge':'end','delta':-.5}]})
         mutate('undo');mutate('redo')
-        picture=api('preview',project=project,time=.5)
-        preview=root/'preview.png';preview.write_bytes(base64.b64decode(picture['png']))
-        assert preview.read_bytes().startswith(b'\x89PNG\r\n\x1a\n')
+        if args.skip_preview:
+            print('SKIP: preview readback needs a stable GPU; this runner suspends its DXGI device')
+        else:
+            picture=api('preview',project=project,time=.5)
+            preview=root/'preview.png';preview.write_bytes(base64.b64decode(picture['png']))
+            assert preview.read_bytes().startswith(b'\x89PNG\r\n\x1a\n')
         def check_picture(path):
             pixels=subprocess.check_output([args.ffmpeg,'-v','error','-i',str(path),'-frames:v','1','-vf','scale=32:18','-f','rawvideo','-pix_fmt','rgb24','pipe:1'],timeout=30)
             assert len(pixels)==32*18*3, 'incomplete decoded frame'
             assert max(pixels)-min(pixels)>80 and sum(pixels)/len(pixels)>15, 'rendered frame is blank'
-        check_picture(preview)
+        if not args.skip_preview:
+            check_picture(preview)
         job=api('export',project=project)
         # No browser requests while the worker runs; its journal must reach done independently.
         journal=root/'workspace'/'jobs.json';deadline=time.monotonic()+180
@@ -71,7 +75,7 @@ with tempfile.TemporaryDirectory() as folder:
         post('/pair',{'code':config['code']})
         assert any(j['id']==job['id'] and j['state']=='done' for j in api('info')['jobs'])
         assert api('open',project=project)['view']['project']['timelines'][0]['clips']
-        print('PASS: packaged host, pairing, upload, edit/undo/redo, PNG preview, detached export, audio/video download and reconnect')
+        print('PASS: packaged host, pairing, upload, edit/undo/redo, detached export, audio/video download and reconnect' + (', PNG preview' if not args.skip_preview else ' (preview skipped: runner DXGI device suspended)'))
     except Exception:
         log=root/'workspace'/'engine.log'
         if log.exists(): print(log.read_text(encoding='utf-8',errors='replace')[-16000:])
