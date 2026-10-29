@@ -302,7 +302,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "LAN packaging failed" }
           Copy-Item dist/ConcatPlusLAN/* $bundle -Recurse -Force
           Copy-Item lan/README.md "$bundle/LAN-README.md"
-          python lan/tests/integration.py --host "$bundle/ConcatPlusLAN.exe" --ffmpeg "$env:FFMPEG_DIR/bin/ffmpeg.exe" --ffprobe "$env:FFMPEG_DIR/bin/ffprobe.exe" --skip-preview
+          python lan/tests/integration.py --host "$bundle/ConcatPlusLAN.exe" --ffmpeg "$env:FFMPEG_DIR/bin/ffmpeg.exe" --ffprobe "$env:FFMPEG_DIR/bin/ffprobe.exe" --expect-no-renderer
           if ($LASTEXITCODE -ne 0) { throw "Packaged LAN integration failed" }
           Compress-Archive -Path "$bundle/*" -DestinationPath stage/ConcatPlus-LAN-windows-x64.zip
 
