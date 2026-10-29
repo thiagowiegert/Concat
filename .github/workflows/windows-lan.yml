@@ -196,6 +196,11 @@ jobs:
           key: ${{ matrix.target }}-${{ matrix.os }}
           env-vars: CARGO CC CFLAGS CXX CMAKE RUST GGML ORT
 
+      - name: Clean cached Windows artifacts
+        shell: bash
+        working-directory: src
+        run: cargo clean --target x86_64-pc-windows-msvc
+
       - name: Build
         # An Intel Mac runner is the slow one: its release build ran past
         # sixty minutes in v0.2.7-rc.1.
