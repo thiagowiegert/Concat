@@ -674,6 +674,9 @@ export component SettingsDialog inherits Modal {
     callback server-token-generated();
     /// the Version page: look for the releases, pick one, put it in place
     callback check-updates();
+    callback lan-connect(string) -> string;
+    property <string> lan-address: "";
+    property <string> lan-error: "";
     callback version-chosen(index: int);
     callback install-version();
     callback install-cancel();
@@ -891,6 +894,27 @@ export component SettingsDialog inherits Modal {
             finger: root.phone;
 
             if root.data.tab == 0: VerticalLayout {
+                DialogSection {
+                    first: true;
+                    title: "Concat Plus LAN";
+                    hint: "Edita desde el teléfono con el motor de tu PC. Abre Concat Plus LAN en Windows e introduce su dirección. El editor remoto se abre en el navegador.";
+                    Field {
+                        value: root.lan-address;
+                        placeholder: "http://192.168.1.10:7421";
+                        technical: true;
+                        edited(text) => { root.lan-address = text; }
+                    }
+                    Button {
+                        label: "Conectar con la PC";
+                        primary: true;
+                        clicked => { root.lan-error = root.lan-connect(root.lan-address); }
+                    }
+                    if root.lan-error != "": Text {
+                        text: root.lan-error;
+                        wrap: word-wrap;
+                        color: Theme.fg;
+                    }
+                }
                 DialogSection {
                     ruled: false;
                     first: true;

@@ -82,6 +82,11 @@ on:
       - "audit/**"
       - "scripts/readme/**"
   workflow_dispatch:
+    inputs:
+      lan_release:
+        description: Build Windows LAN and publish a preview release after all checks pass
+        type: boolean
+        default: false
 
 # Keyed by the calling workflow too, so a call from a release never shares
 # a group with a pull request's run. A pull request's run, or a push's, is
@@ -580,3 +585,36 @@ jobs:
           name: smoke-ios-simulator
           path: smoke-ios/
           if-no-files-found: warn
+
+  windows-lan:
+    if: github.event_name == 'workflow_dispatch' && inputs.lan_release
+    uses: ./.github/workflows/windows-lan.yml
+    with:
+      ref: ${{ github.sha }}
+
+  publish-lan:
+    if: github.repository == 'thiagowiegert/Concat' && github.event_name == 'workflow_dispatch' && inputs.lan_release
+    needs: [android, android-smoke, windows-lan]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: Concat-android-arm64
+          path: release-assets
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: ConcatPlus-LAN-windows-x64
+          path: release-assets
+      - name: Publish tested preview assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test -n "$(find release-assets -name '*.apk' -print -quit)"
+          test -f release-assets/ConcatPlus-LAN-windows-x64.zip
+          (cd release-assets && sha256sum *.apk *.zip > SHA256SUMS.txt)
+          gh release create v0.3.0-lan-preview.1 release-assets/* --prerelease --target "$GITHUB_SHA" --title "Concat Plus LAN · Windows + Android preview 1" --notes-file lan/RELEASE.md
+

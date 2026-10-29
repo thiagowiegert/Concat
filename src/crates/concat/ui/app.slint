@@ -390,6 +390,7 @@ export component App inherits Window {
     callback settings-server-token-edited(text: string);
     callback settings-server-token-generated();
     callback settings-check-updates();
+    callback settings-lan-connect(string) -> string;
     callback settings-version-chosen(index: int);
     callback settings-install-version();
     callback settings-install-cancel();
@@ -1028,6 +1029,7 @@ export component App inherits Window {
         server-token-edited(text) => { root.settings-server-token-edited(text); }
         server-token-generated => { root.settings-server-token-generated(); }
         check-updates => { root.settings-check-updates(); }
+        lan-connect(address) => { return root.settings-lan-connect(address); }
         version-chosen(index) => { root.settings-version-chosen(index); }
         install-version => { root.settings-install-version(); }
         install-cancel => { root.settings-install-cancel(); }

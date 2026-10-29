@@ -1,0 +1,307 @@
+name: Build Concat Plus Windows LAN
+on:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        default: ""
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # The prebuilt dependencies - BtbN's FFmpeg 8.1 (GPL, shared, one per
+  # arch), ONNX Runtime, sherpa-onnx, nfpm, appimagetool, LLVM for Windows
+  # and Intel's emulator - are each pinned to one file and its digest in
+  # scripts/ci/deps.lock, and fetched through scripts/ci/fetch.sh, which
+  # refuses a file whose digest has changed. The versions below are the
+  # ones those files carry, for the names inside them; a bump changes both.
+  #
+  # ONNX Runtime, for the Linux and Windows bundles: the version the ort
+  # crate is built against (see ort-sys's dist table), as Microsoft's own
+  # shared build.
+  ORT_VERSION: 1.28.0
+  # And for Intel Macs, which neither ort nor Microsoft build for any more:
+  # the last release Microsoft made for them. It serves API 23, which is
+  # what ort asks for there, and it is built for macOS 13.4, so it is not
+  # linked: the app loads it at first use, and not on an older macOS (see
+  # concat-vision's manifest and onnx.rs, and #333).
+  ORT_INTEL_MAC_VERSION: 1.23.2
+  # WiX for the Windows .msi, as a dotnet tool, pinned by version.
+  WIX_VERSION: 6.0.2
+  # Oldest macOS the bundles run on. Apple silicon Macs all run newer than
+  # this; it is the Intel floor. scripts/ci/check-min-os.sh lists every
+  # bundled library built for a newer one.
+  MACOSX_DEPLOYMENT_TARGET: "12.0"
+  # ggml (whisper.cpp's kernels) tunes itself to the machine it is built
+  # on unless told otherwise, and these bundles run on other machines: a
+  # runner with AVX-512 or SVE would leave a binary that faults on a CPU
+  # without them. Off, ggml does not probe the runner. whisper-rs-sys
+  # forwards every GGML_* variable to CMake as a define. The instruction
+  # sets each target's kernels are built for are the job's, by its `ggml`
+  # row in the matrix; see the job's `env`.
+  GGML_NATIVE: "OFF"
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 120
+    strategy:
+      matrix:
+        include:
+          - platform: windows
+            arch: x86_64
+            os: windows-2022
+            target: x86_64-pc-windows-msvc
+            ffmpeg: win64
+            sherpa: win-x64
+            ort: win-x64
+            llvm: win64
+            vc: x64
+            inno: x64compatible
+            wix: x64
+            ggml: variants
+    env:
+      # What whisper's CPU kernels are built for on x86_64, by the matrix's
+      # `ggml` row. ggml's own switches default to AVX2 with FMA, F16C and
+      # BMI2, compiled into the whole CPU backend - and the editor died at
+      # launch with an illegal instruction on an Ivy Bridge, which has AVX
+      # and nothing newer (#193). 0.2.6 and 0.2.7 built with all four off,
+      # so those machines start, and every other one transcribed some
+      # eight times slower: 324 s for 43 s of sound on a Ryzen 5 2600, 40 s
+      # with AVX2 (#388). Two answers, by target:
+      #
+      # - `variants` (Windows and Linux x86_64): whisper and ggml are built
+      #   as shared libraries and the CPU backend as one module per x86_64
+      #   generation - ggml-cpu-x64, -sse42, -sandybridge, -haswell,
+      #   -skylakex, -icelake, -alderlake and more - shipped beside the
+      #   program. At the first transcription ggml scores each against the
+      #   CPU's CPUID and loads the best it can run (concat-speech's
+      #   `cpu_backend`), so a Haswell or a Ryzen gets AVX2 and FMA, and a
+      #   Sandy Bridge the AVX kernels it had. The modules are what the
+      #   whisper.cpp and llama.cpp projects ship their own x86 builds as.
+      #   The published whisper-rs-sys can only build static libraries;
+      #   src/patches/whisper-rs-sys adds the shared build, chosen by
+      #   GGML_BACKEND_DL. Nothing else in the bundle may hold AVX2: the
+      #   instruction-set scan allows it in the Haswell-and-newer modules
+      #   alone (scripts/ci/isa-allow.txt).
+      # - none (macOS x86_64): all four off, as before. It declares macOS 12,
+      #   which the 2013 Mac Pro runs, and that is an Ivy Bridge.
+      #
+      # Everything else is ARM, which reads none of these. The `haswell`
+      # answer - built for Haswell outright - is kept for a target that
+      # only runs on AVX2 machines.
+      GGML_BACKEND_DL: ${{ matrix.ggml == 'variants' && 'ON' || 'OFF' }}
+      GGML_CPU_ALL_VARIANTS: ${{ matrix.ggml == 'variants' && 'ON' || 'OFF' }}
+      GGML_AVX2: ${{ matrix.ggml == 'haswell' && 'ON' || 'OFF' }}
+      GGML_FMA: ${{ matrix.ggml == 'haswell' && 'ON' || 'OFF' }}
+      GGML_F16C: ${{ matrix.ggml == 'haswell' && 'ON' || 'OFF' }}
+      GGML_BMI2: ${{ matrix.ggml == 'haswell' && 'ON' || 'OFF' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: The pinned toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(sed -n 's/^channel = "\(.*\)"/\1/p' src/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master (v1), 2026-10-09
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+
+      - name: Read the version
+        id: version
+        shell: bash
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' src/Cargo.toml | head -1)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Building Concat $version for ${{ matrix.target }}"
+
+      - name: FFmpeg development libraries and LLVM (Windows)
+        if: matrix.platform == 'windows'
+        timeout-minutes: 15
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $bash = "$env:ProgramFiles\Git\bin\bash.exe"
+          & $bash scripts/ci/fetch.sh "llvm-${{ matrix.llvm }}" llvm.exe
+          if ($LASTEXITCODE -ne 0) { throw "the LLVM download failed" }
+          Start-Process -Wait -FilePath .\llvm.exe -ArgumentList "/S", "/D=C:\llvm"
+          if (-not (Test-Path C:\llvm\bin\libclang.dll)) { throw "LLVM did not install to C:\llvm" }
+          # The installer is not needed once LLVM is in place. On Windows on
+          # ARM it can still hold its own file open after it returns, which
+          # turned the deletion into the step's failure in v0.2.7-rc.1; a
+          # left-over installer in the workspace harms nothing.
+          Remove-Item llvm.exe -ErrorAction SilentlyContinue
+          if ("${{ matrix.arch }}" -eq "aarch64") {
+            "CC=clang-cl" | Out-File -FilePath $env:GITHUB_ENV -Append
+            "CXX=clang-cl" | Out-File -FilePath $env:GITHUB_ENV -Append
+            "CXXFLAGS=-EHsc" | Out-File -FilePath $env:GITHUB_ENV -Append
+            "CMAKE_GENERATOR=Ninja" | Out-File -FilePath $env:GITHUB_ENV -Append
+          }
+          "C:\llvm\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+          "LIBCLANG_PATH=C:\llvm\bin" | Out-File -FilePath $env:GITHUB_ENV -Append
+          & $bash scripts/ci/fetch.sh "ffmpeg-${{ matrix.ffmpeg }}" ffmpeg-win.zip
+          if ($LASTEXITCODE -ne 0) { throw "the FFmpeg download failed" }
+          Expand-Archive ffmpeg-win.zip -DestinationPath ffdl
+          $dir = (Get-ChildItem ffdl -Directory | Select-Object -First 1).FullName
+          "FFMPEG_DIR=$dir" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "$dir\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: ONNX Runtime (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          & "$env:ProgramFiles\Git\bin\bash.exe" scripts/ci/fetch.sh "onnxruntime-${{ matrix.ort }}" onnxruntime.zip
+          if ($LASTEXITCODE -ne 0) { throw "the ONNX Runtime download failed" }
+          Expand-Archive onnxruntime.zip -DestinationPath .
+          $dir = "$PWD\onnxruntime-${{ matrix.ort }}-$env:ORT_VERSION"
+          if (-not (Test-Path "$dir\lib\onnxruntime.lib")) { throw "$dir\lib\onnxruntime.lib is not there" }
+          if (-not (Test-Path "$dir\lib\onnxruntime.dll")) { throw "$dir\lib\onnxruntime.dll is not there" }
+          "ORT_LIB_LOCATION=$dir\lib" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "ORT_PREFER_DYNAMIC_LINK=1" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "ORT_DIR=$dir" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "$dir\lib" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: sherpa-onnx shared libraries (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $version = (Select-String -Path src\Cargo.lock -Pattern 'name = "sherpa-onnx-sys"' -Context 0,1).Context.PostContext[0] -replace '.*"(.*)".*', '$1'
+          $name = "sherpa-onnx-${{ matrix.sherpa }}-shared-MT-Release-lib"
+          $stem = "sherpa-onnx-v$version-${{ matrix.sherpa }}-shared-MT-Release-lib"
+          $bash = "$env:ProgramFiles\Git\bin\bash.exe"
+          $url = & $bash scripts/ci/fetch.sh --url $name
+          if ($url -notmatch "/v$([regex]::Escape($version))/") { throw "scripts/ci/deps.lock pins $name for another version than Cargo.lock's $version" }
+          Write-Host "Downloading $stem"
+          & $bash scripts/ci/fetch.sh $name sherpa.tar.bz2
+          if ($LASTEXITCODE -ne 0) { throw "the sherpa-onnx download failed" }
+          Write-Host "Unpacking"
+          python -c "import tarfile; t = tarfile.open('sherpa.tar.bz2'); t.extractall(**({'filter': 'data'} if hasattr(tarfile, 'data_filter') else {}))"
+          if (-not (Test-Path "$stem\lib")) { throw "$stem\lib is not there after unpacking" }
+          New-Item -ItemType Directory -Force sherpa-libs, sherpa-dlls | Out-Null
+          Copy-Item "$stem\lib\sherpa-onnx-*.lib" sherpa-libs\
+          Copy-Item "$stem\lib\sherpa-onnx-*.dll" sherpa-dlls\
+          "SHERPA_ONNX_LIB_DIR=$PWD\sherpa-libs" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "SHERPA_DLL_DIR=$PWD\sherpa-dlls" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: src
+          key: ${{ matrix.target }}
+          env-vars: CARGO CC CFLAGS CXX CMAKE RUST GGML ORT
+
+      - name: Build
+        # An Intel Mac runner is the slow one: its release build ran past
+        # sixty minutes in v0.2.7-rc.1.
+        timeout-minutes: ${{ matrix.platform == 'macos' && matrix.arch == 'x86_64' && 100 || 60 }}
+        shell: bash
+        working-directory: src
+        run: |
+          set -o pipefail
+          cargo build --locked --profile app -p concat -p concat-cli --target ${{ matrix.target }} 2>&1 | tee build.log
+
+      - name: Build log to the summary (failure only)
+        if: failure()
+        shell: bash
+        run: |
+          if [ -f src/build.log ]; then
+            {
+              echo "### Build failed: ${{ matrix.target }}"
+              echo '```'
+              tail -n 150 src/build.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Stage (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $name = "Concat-$env:VERSION-windows-${{ matrix.arch }}"
+          $dir = "stage\$name"
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          Copy-Item "src\target\${{ matrix.target }}\app\concat.exe", "src\target\${{ matrix.target }}\app\concat-cli.exe" $dir
+          Copy-Item "$env:FFMPEG_DIR\bin\*.dll" $dir
+          # The sherpa-onnx runtime, set aside by the download step above.
+          Copy-Item "$env:SHERPA_DLL_DIR\*.dll" $dir
+          Copy-Item "$env:ORT_DIR\lib\*.dll" $dir
+          # whisper's DLLs and its CPU modules, one per x86_64 generation
+          # (the job's `env` says why), from the bin\ whisper-rs-sys
+          # installed them to; see the Linux stage for why not from beside
+          # the program. Beside concat.exe Windows finds the DLLs and
+          # concat-speech's `cpu_backend` the modules.
+          if ("${{ matrix.ggml }}" -eq "variants") {
+            $built = Get-ChildItem "src\target\${{ matrix.target }}\app\build\whisper-rs-sys-*\out\bin\ggml-cpu-x64.dll" |
+              Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            if (-not $built) { throw "whisper-rs-sys installed no ggml-cpu-x64.dll" }
+            Write-Host "whisper's build: $($built.DirectoryName)"
+            Copy-Item "$($built.DirectoryName)\whisper.dll", "$($built.DirectoryName)\ggml*.dll" $dir
+            foreach ($module in "x64", "sandybridge", "haswell") {
+              if (-not (Test-Path "$dir\ggml-cpu-$module.dll")) { throw "ggml-cpu-$module.dll is missing from the build" }
+            }
+          }
+          Copy-Item LICENSE, THIRD_PARTY_NOTICES.md $dir
+          # The Visual C++ runtime DLLs anything in the folder imports, from
+          # the newest redistributable folder Visual Studio carries.
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath
+          $crt = Get-ChildItem "$vs\VC\Redist\MSVC\*\${{ matrix.vc }}\Microsoft.VC14*.CRT" -Directory |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $crt) { throw "no Visual C++ redistributable folder for ${{ matrix.vc }} under $vs" }
+          $dumpbin = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -find "VC\Tools\MSVC\**\bin\Host*\*\dumpbin.exe" | Select-Object -First 1
+          # Twice over: msvcp140.dll, once copied, imports vcruntime140.dll.
+          foreach ($pass in 1, 2) {
+            foreach ($pe in Get-ChildItem $dir -File -Include *.exe, *.dll -Recurse) {
+              foreach ($line in & $dumpbin /nologo /dependents $pe.FullName) {
+                $dll = $line.Trim()
+                if ($dll -match "\.dll$" -and (Test-Path "$($crt.FullName)\$dll") -and -not (Test-Path "$dir\$dll")) {
+                  Write-Host "$($pe.Name) imports $dll; copying it from $($crt.FullName)"
+                  Copy-Item "$($crt.FullName)\$dll" $dir
+                }
+              }
+            }
+          }
+          Get-ChildItem $dir | Format-Table Name, Length
+
+      - name: Smoke test (Windows)
+        if: matrix.platform == 'windows'
+        timeout-minutes: 15
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: scripts/ci/smoke-windows.ps1 -Bundle "stage\Concat-$env:VERSION-windows-${{ matrix.arch }}"
+
+      - name: Test and package the LAN companion
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          python -m unittest discover -s lan/tests -v
+          if ($LASTEXITCODE -ne 0) { throw "LAN tests failed" }
+          node --check lan/web/app.js
+          if ($LASTEXITCODE -ne 0) { throw "LAN JavaScript syntax failed" }
+          $bundle = "stage/Concat-$env:VERSION-windows-x86_64"
+          python -m pip install pyinstaller==6.22.3
+          if ($LASTEXITCODE -ne 0) { throw "PyInstaller installation failed" }
+          python -m PyInstaller --noconfirm --onedir --console --hide-console hide-early --contents-directory _host --name ConcatPlusLAN --add-data "lan/web:web" --icon assets/icons/concat.ico lan/host.py
+          if ($LASTEXITCODE -ne 0) { throw "LAN packaging failed" }
+          Copy-Item dist/ConcatPlusLAN/* $bundle -Recurse -Force
+          Copy-Item lan/README.md "$bundle/LAN-README.md"
+          python lan/tests/integration.py --host "$bundle/ConcatPlusLAN.exe" --ffmpeg "$env:FFMPEG_DIR/bin/ffmpeg.exe" --ffprobe "$env:FFMPEG_DIR/bin/ffprobe.exe"
+          if ($LASTEXITCODE -ne 0) { throw "Packaged LAN integration failed" }
+          Compress-Archive -Path "$bundle/*" -DestinationPath stage/ConcatPlus-LAN-windows-x64.zip
+
+      - name: Upload Windows bundle
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: ConcatPlus-LAN-windows-x64
+          path: stage/ConcatPlus-LAN-windows-x64.zip
+          if-no-files-found: error

@@ -2112,6 +2112,22 @@ fn start(project: Option<std::path::PathBuf>, smoke: bool) -> Result<(), slint::
     app.on_settings_server_token_generated(on_window!(|state| {
         state.handle(Msg::Settings(SettingsMsg::ServerTokenGenerated));
     }));
+    app.on_settings_lan_connect(|address: SharedString| {
+        let value = address.trim().trim_end_matches('/');
+        let authority = value.strip_prefix("http://").or_else(|| value.strip_prefix("https://"));
+        let valid = authority.is_some_and(|host| {
+            host.parse::<std::net::SocketAddrV4>().is_ok_and(|socket| {
+                socket.port() != 0 && (socket.ip().is_private() || socket.ip().is_loopback())
+            })
+        });
+        if !valid {
+            return SharedString::from("Introduce la dirección IPv4 y el puerto que muestra la PC, por ejemplo http://192.168.1.10:7421");
+        }
+        match platform::open_link(value) {
+            Ok(()) => SharedString::default(),
+            Err(error) => SharedString::from(format!("No se pudo abrir el editor LAN: {error}")),
+        }
+    });
     app.on_settings_check_updates(on_window!(|state| {
         state.handle(Msg::Settings(SettingsMsg::CheckUpdates));
     }));
