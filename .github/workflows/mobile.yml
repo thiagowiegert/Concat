@@ -367,6 +367,7 @@ jobs:
           if-no-files-found: warn
 
   ios:
+    if: github.event_name != 'workflow_dispatch' || !inputs.lan_release
     name: iOS arm64
     runs-on: macos-15
     timeout-minutes: 90
@@ -478,6 +479,7 @@ jobs:
   # device one. mobile-env.sh does not know the simulator yet, so the
   # build's environment is written out in the build step below.
   ios-simulator:
+    if: github.event_name != 'workflow_dispatch' || !inputs.lan_release
     name: iOS simulator smoke
     runs-on: macos-15
     timeout-minutes: 90
