@@ -193,7 +193,7 @@ jobs:
         with:
           cache-on-failure: true
           workspaces: src
-          key: ${{ matrix.target }}
+          key: ${{ matrix.target }}-${{ matrix.os }}
           env-vars: CARGO CC CFLAGS CXX CMAKE RUST GGML ORT
 
       - name: Build
