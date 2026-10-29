@@ -44,14 +44,14 @@ env:
 
 jobs:
   windows:
-    runs-on: windows-2025
+    runs-on: windows-2022
     timeout-minutes: 120
     strategy:
       matrix:
         include:
           - platform: windows
             arch: x86_64
-            os: windows-2025
+            os: windows-2022
             target: x86_64-pc-windows-msvc
             ffmpeg: win64
             sherpa: win-x64
@@ -288,6 +288,7 @@ jobs:
         shell: pwsh
         env:
           VERSION: ${{ steps.version.outputs.version }}
+          CONCAT_GPU: software
         run: |
           $ErrorActionPreference = "Stop"
           python -m unittest discover -s lan/tests -v
