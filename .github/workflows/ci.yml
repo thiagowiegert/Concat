@@ -12,7 +12,6 @@ on:
   push:
     branches: [main]
   pull_request:
-  workflow_dispatch:
   # release.yml runs this before it builds anything: a tag on a red tree
   # is not a release. It names the tag, because a release started by hand
   # runs on main, and main is not what it builds.
@@ -22,6 +21,16 @@ on:
         description: The ref to test, when it is not the one this runs on
         type: string
         default: ""
+      include_desktop:
+        description: Run the upstream macOS and Windows build checks
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      include_desktop:
+        description: Run the upstream macOS and Windows build checks
+        type: boolean
+        default: false
 
 # Keyed on what is tested, so a release testing its tag and a push to
 # main never cancel each other. Only a pull request's run is cancelled by
@@ -55,6 +64,8 @@ jobs:
       # Every string the interface shows is a key in a locale file; this
       # keeps en.json the inventory of them and every shipped language
       # keyed off it. See TRANSLATING.md.
+      - run: python3 scripts/ci/test-android-service.py
+        if: ${{ !cancelled() }}
       - run: python3 scripts/locales.py --check
         if: ${{ !cancelled() }}
       # The models Concat downloads are mirrored onto a release of this
@@ -242,6 +253,7 @@ jobs:
   # ninety minutes every time (see cards.rs), so without CONCAT_REQUIRE_GPU
   # it skips there and runs on Linux's lavapipe above.
   desktop:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.include_desktop }}
     name: ${{ matrix.verb }} on ${{ matrix.os }}
     strategy:
       fail-fast: false

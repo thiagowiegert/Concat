@@ -56,6 +56,16 @@ import java.util.List;
  * from the dex inside the binary; see src/lib.rs.
  */
 public class ConcatFiles extends Fragment {
+    public static native void exportCancelled(long id);
+    public static native boolean exportIsCancelled();
+    public static String exportStart(Activity activity, long id) {
+        return ConcatExportService.start(activity, id);
+    }
+    public static void exportProgress(long id, int percent, String stage) {
+        ConcatExportService.progress(id, percent, stage);
+    }
+    public static void exportStop(long id) { ConcatExportService.stop(id); }
+
     private static final int REQUEST_PICK = 0xC0C4;
     private static final int REQUEST_MICROPHONE = 0xC0C5;
     private static final String TAG = "concat-files";
@@ -86,7 +96,7 @@ public class ConcatFiles extends Fragment {
             return new String[] {null, "this phone has no media store to put it in"};
         }
         return publish(activity, path, "video/mp4", folder,
-                MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY));
+                MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), true);
     }
 
     /**
@@ -100,14 +110,14 @@ public class ConcatFiles extends Fragment {
             return new String[] {null, "this phone has no media store to put it in"};
         }
         return publish(activity, path, mime, Environment.DIRECTORY_DOWNLOADS + "/Concat",
-                MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY));
+                MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), false);
     }
 
     /** Moves the file at {@code path} into {@code collection}, under {@code folder}. */
     private static String[] publish(
-            Activity activity, String path, String mime, String folder, Uri collection) {
+            Activity activity, String path, String mime, String folder, Uri collection, boolean export) {
         File file = new File(path);
-        ContentResolver resolver = activity.getContentResolver();
+        ContentResolver resolver = activity.getApplicationContext().getContentResolver();
         ContentValues values = new ContentValues();
         values.put(MediaStore.MediaColumns.DISPLAY_NAME, file.getName());
         values.put(MediaStore.MediaColumns.MIME_TYPE, mime);
@@ -133,11 +143,13 @@ public class ConcatFiles extends Fragment {
             byte[] buffer = new byte[1 << 16];
             int read;
             while ((read = in.read(buffer)) > 0) {
+                if (export && ConcatExportService.cancelled()) throw new IOException("Export cancelled");
                 out.write(buffer, 0, read);
             }
             out.close();
             out = null;
             values.clear();
+            if (export && ConcatExportService.cancelled()) throw new IOException("Export cancelled");
             values.put(MediaStore.MediaColumns.IS_PENDING, 0);
             resolver.update(uri, values, null, null);
         } catch (Exception e) {
@@ -371,3 +383,4 @@ public class ConcatFiles extends Fragment {
         }
     }
 }
+

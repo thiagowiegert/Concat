@@ -31,7 +31,7 @@ component Tile inherits Rectangle {
     opacity: root.enabled ? 1.0 : 0.4;
     background: touch.pressed ? Theme.field-active : Theme.field;
 
-    animate background { duration: 100ms; easing: cubic-bezier(0.4, 0, 0.2, 1); }
+    animate background { duration: 90ms; easing: cubic-bezier(0.4, 0, 0.2, 1); }
 
     VerticalLayout {
         alignment: center;
@@ -251,3 +251,4 @@ export component PhoneCanvas inherits VerticalLayout {
         clicked => { Backdrop.apply-to-all(); }
     }
 }
+

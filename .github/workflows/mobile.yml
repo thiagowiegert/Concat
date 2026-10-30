@@ -59,6 +59,10 @@ on:
         description: Sign the APK with the repository's key; a release does, nothing else may
         type: boolean
         default: false
+      android_only:
+        description: Build and smoke-test Android without building iOS
+        type: boolean
+        default: true
     secrets:
       ANDROID_KEYSTORE:
         description: Base64 of the release keystore
@@ -82,6 +86,11 @@ on:
       - "audit/**"
       - "scripts/readme/**"
   workflow_dispatch:
+    inputs:
+      android_only:
+        description: Build and smoke-test Android without building iOS
+        type: boolean
+        default: true
 
 # Keyed by the calling workflow too, so a call from a release never shares
 # a group with a pull request's run. A pull request's run, or a push's, is
@@ -124,7 +133,7 @@ jobs:
       - name: Read the version
         id: version
         run: |
-          version=$(sed -n 's/^version = "\(.*\)"/\1/p' src/Cargo.toml | head -1)
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' src/Cargo.toml | tr -d '\r' | head -1)
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Building Concat $version for ${{ matrix.target }}"
       # The toolchain src/rust-toolchain.toml pins, installed by name, with
@@ -144,6 +153,17 @@ jobs:
       # newest NDK under the SDK on its own, and the build scripts of
       # whisper.cpp, Skia and Slint's backend each read it by their own
       # name from what mobile-env.sh exports.
+      - name: Android API 35 for the export service
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          sdkmanager="$(find "$sdk_root/cmdline-tools" -name sdkmanager -print -quit)"
+          if [[ -z "$sdkmanager" || ! -x "$sdkmanager" ]]; then
+            echo "::error::sdkmanager not found under $sdk_root/cmdline-tools"
+            exit 1
+          fi
+          "$sdkmanager" "platforms;android-35" "build-tools;35.0.0"
+
       - name: System libraries
         run: sudo apt-get update && sudo apt-get install -y cmake libclang-dev
 
@@ -196,6 +216,17 @@ jobs:
           set -o pipefail
           eval "$(scripts/mobile-env.sh ${{ matrix.target }})"
           cargo apk build --release -p concat-android --target ${{ matrix.target }} 2>&1 | tee build.log
+
+      - name: Package the Android export service
+        run: python3 scripts/ci/package-android-service.py src/target/release/apk/Concat.apk
+
+      - name: Preserve Android build logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-build-log-${{ matrix.abi }}
+          path: src/build.log
+          if-no-files-found: ignore
 
       # A release's APK is signed over again with the repository's key, so
       # it installs over the build before it. Only a release asks (`sign`);
@@ -294,7 +325,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        api: [30, 35]
+        api: [30, 33, 34, 35]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -349,6 +380,7 @@ jobs:
 
   ios:
     name: iOS arm64
+    if: ${{ github.event_name == 'workflow_dispatch' && !inputs.android_only }}
     runs-on: macos-15
     timeout-minutes: 90
     steps:
@@ -358,7 +390,7 @@ jobs:
       - name: Read the version
         id: version
         run: |
-          version=$(sed -n 's/^version = "\(.*\)"/\1/p' src/Cargo.toml | head -1)
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' src/Cargo.toml | tr -d '\r' | head -1)
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Building Concat $version for aarch64-apple-ios"
       - name: The pinned toolchain
@@ -460,6 +492,7 @@ jobs:
   # build's environment is written out in the build step below.
   ios-simulator:
     name: iOS simulator smoke
+    if: ${{ github.event_name == 'workflow_dispatch' && !inputs.android_only }}
     runs-on: macos-15
     timeout-minutes: 90
     steps:
