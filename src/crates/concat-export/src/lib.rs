@@ -1725,9 +1725,8 @@ fn headless<T>(draw: impl FnOnce(&mut WgpuCompositor) -> T) -> Result<T, String>
     // A device that died under an earlier preview is not kept: every
     // preview after it would be black.
     if gpu.lost() {
-        let fresh = WgpuCompositor::new().ok_or_else(|| {
-            format!("the preview device was lost, and {NO_RENDERER}")
-        })?;
+        let fresh = WgpuCompositor::new()
+            .ok_or_else(|| format!("the preview device was lost, and {NO_RENDERER}"))?;
         log::warn!("previews: the GPU device was lost; drawing on a fresh one");
         *gpu = fresh;
     }
