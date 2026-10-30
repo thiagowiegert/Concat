@@ -107,11 +107,16 @@ class HostTests(unittest.TestCase):
     def test_export_observer_runs_without_http_client(self):
         (self.root/'projects'/'Test').mkdir()
         job=self.workspace.call({'op':'export','project':'Test'})
-        for _ in range(30):
-            if self.workspace.jobs[job['id']]['state']=='done':break
-            time.sleep(.1)
-        self.assertEqual(self.workspace.jobs[job['id']]['state'],'done')
-        self.assertEqual(json.loads((self.root/'jobs.json').read_text())[job['id']]['state'],'done')
+        deadline=time.monotonic()+15
+        state='running';persisted={'state':'running'}
+        while time.monotonic()<deadline:
+            with self.workspace.lock:
+                state=self.workspace.jobs[job['id']]['state']
+                persisted=json.loads((self.root/'jobs.json').read_text())[job['id']]
+            if state=='done' and persisted['state']=='done':break
+            time.sleep(.05)
+        self.assertEqual(state,'done')
+        self.assertEqual(persisted['state'],'done')
     def test_download_range(self):
         headers=self.pair();headers['Range']='bytes=2-4'
         (self.root/'exports'/'video.mp4').write_bytes(b'0123456789')
