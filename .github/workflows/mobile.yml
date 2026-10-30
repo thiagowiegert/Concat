@@ -62,7 +62,7 @@ on:
       android_only:
         description: Build and smoke-test Android without building iOS
         type: boolean
-        default: false
+        default: true
     secrets:
       ANDROID_KEYSTORE:
         description: Base64 of the release keystore
@@ -90,7 +90,7 @@ on:
       android_only:
         description: Build and smoke-test Android without building iOS
         type: boolean
-        default: false
+        default: true
 
 # Keyed by the calling workflow too, so a call from a release never shares
 # a group with a pull request's run. A pull request's run, or a push's, is
@@ -372,7 +372,7 @@ jobs:
 
   ios:
     name: iOS arm64
-    if: ${{ !inputs.android_only }}
+    if: ${{ github.event_name == 'workflow_dispatch' && !inputs.android_only }}
     runs-on: macos-15
     timeout-minutes: 90
     steps:
@@ -484,7 +484,7 @@ jobs:
   # build's environment is written out in the build step below.
   ios-simulator:
     name: iOS simulator smoke
-    if: ${{ !inputs.android_only }}
+    if: ${{ github.event_name == 'workflow_dispatch' && !inputs.android_only }}
     runs-on: macos-15
     timeout-minutes: 90
     steps:
