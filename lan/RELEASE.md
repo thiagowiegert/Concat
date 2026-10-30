@@ -8,9 +8,13 @@ Incluye código personalizado persistente, código aleatorio y acceso sin códig
 - Guía, límites y código completo: [lan/README.md](https://github.com/thiagowiegert/Concat/blob/v0.3.0-lan-preview.1/lan/README.md).
 
 Esta es una **pre-release**, no una versión estable validada en una pareja física Windows/Android.
-La publicación está condicionada a compilar Windows/APK, probar el arranque en emuladores Android
-11/13/14/15 y pasar las pruebas del host y la integración con exportación real en el runner Windows.
-Esto no sustituye la prueba en tu LAN ni demuestra funcionamiento con la pantalla del teléfono bloqueada.
+Windows x64 y el APK arm64 compilaron; el APK arrancó en emuladores Android 11/13/14/15.
+La integración del host Windows pasó pairing, carga de medios, edición, deshacer/rehacer,
+seguimiento del trabajo de exportación y reconexión. El runner Windows de GitHub no tiene un
+renderer DXGI utilizable: la prueba confirma que el host registra ese error, pero no demuestra
+un render ni una exportación de video exitosa en Windows. Hace falta probarlo en una PC Windows
+con GPU funcional y conectarlo a un Android en la misma LAN. Tampoco demuestra que el control
+remoto siga funcionando con la pantalla del teléfono bloqueada.
 La interfaz remota usa el navegador y todavía no tiene todas las funciones avanzadas del editor nativo.
 
 El APK de esta preview usa una clave de compilación temporal: puede requerir desinstalar una
