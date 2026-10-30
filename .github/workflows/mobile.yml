@@ -154,7 +154,15 @@ jobs:
       # whisper.cpp, Skia and Slint's backend each read it by their own
       # name from what mobile-env.sh exports.
       - name: Android API 35 for the export service
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          sdkmanager="$(find "$sdk_root/cmdline-tools" -name sdkmanager -print -quit)"
+          if [[ -z "$sdkmanager" || ! -x "$sdkmanager" ]]; then
+            echo "::error::sdkmanager not found under $sdk_root/cmdline-tools"
+            exit 1
+          fi
+          "$sdkmanager" "platforms;android-35" "build-tools;35.0.0"
 
       - name: System libraries
         run: sudo apt-get update && sudo apt-get install -y cmake libclang-dev
@@ -591,4 +599,3 @@ jobs:
           name: smoke-ios-simulator
           path: smoke-ios/
           if-no-files-found: warn
-

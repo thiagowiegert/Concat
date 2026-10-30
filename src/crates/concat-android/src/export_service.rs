@@ -116,4 +116,3 @@ pub(super) unsafe extern "system" fn is_cancelled(
         .unwrap_or(true);
     u8::from(cancelled)
 }
-

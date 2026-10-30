@@ -551,4 +551,3 @@ fn android_main(app: slint::android::AndroidApp) {
         log::error!("{error}");
     }
 }
-
