@@ -43,7 +43,7 @@ jobs:
           TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          version=$(sed -n 's/^version = "\(.*\)"/\1/p' src/Cargo.toml | head -1)
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' src/Cargo.toml | tr -d '\r' | head -1)
           if [[ ! "$TAG" =~ ^android-v${version}-preview\.[0-9]+$ ]]; then
             echo "::error::tag must be android-v${version}-preview.N"
             exit 1
@@ -80,4 +80,3 @@ jobs:
           files: |
             dist/Concat-*-android-arm64.apk
             dist/SHA256SUMS.txt
-
