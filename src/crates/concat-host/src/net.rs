@@ -380,8 +380,10 @@ mod tests {
     }
 
     #[test]
-    fn a_real_refused_connection_is_classed_as_refused() {
-        // A port that was just free: nothing listens on it.
+    fn an_unlistened_loopback_connection_is_classed_as_a_network_failure() {
+        // A port that was just free: nothing listens on it. Some hosted
+        // Windows runners silently drop refused loopback packets instead
+        // of returning WSAECONNREFUSED, so both outcomes are valid here.
         let port = std::net::TcpListener::bind("127.0.0.1:0")
             .and_then(|listener| listener.local_addr())
             .expect("a port")
@@ -394,7 +396,11 @@ mod tests {
             &|request| request,
         )
         .expect_err("nothing answers");
-        assert_eq!(failure.cause, Cause::Refused);
+        assert!(
+            matches!(failure.cause, Cause::Refused | Cause::Timeout),
+            "an unlistened loopback port must be refused or time out, got {:?}",
+            failure.cause
+        );
         assert_eq!(failure.proxy, None, "loopback never goes through a proxy");
     }
 
