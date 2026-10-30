@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- SPDX-FileCopyrightText: 2026 Concat contributors -->
+<resources>
+    <string name="export_notification_channel">Video export</string>
+    <string name="export_notification_title">Concat Plus is exporting</string>
+    <string name="export_notification_preparing">Preparing export</string>
+    <string name="export_notification_saving_gallery">Saving to gallery</string>
+    <string name="export_notification_cancel">Cancel</string>
+</resources>
+

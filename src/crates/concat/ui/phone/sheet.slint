@@ -32,8 +32,23 @@ export component PhoneSheet inherits Rectangle {
     out property <length> drag;
     property <length> dismiss-at: 80px;
 
-    visible: root.open;
+    /// Keep the surface hit-testable while its closing motion completes.
+    property <bool> closing;
+    property <length> motion-offset: root.open ? 0px : root.sheet-height;
+    animate motion-offset { duration: 180ms; easing: cubic-bezier(0.16, 1, 0.3, 1); }
+
+    changed open => {
+        root.closing = !root.open;
+    }
+
+    visible: root.open || root.closing;
     background: transparent;
+
+    Timer {
+        interval: 180ms;
+        running: root.closing;
+        triggered => { root.closing = false; }
+    }
 
     // What is left above the sheet. A tap there is a dismissal; declared
     // first, so the surface takes its own presses.
@@ -43,9 +58,11 @@ export component PhoneSheet inherits Rectangle {
 
     surface := Rectangle {
         x: 0;
-        y: root.height - self.height + root.drag;
+        y: root.height - self.height + root.drag + root.motion-offset;
         width: root.width;
         height: root.sheet-height;
+        opacity: root.open ? 1.0 : 0.0;
+        animate opacity { duration: 140ms; easing: cubic-bezier(0.4, 0, 0.2, 1); }
         background: Theme.panel;
         border-top-left-radius: Theme.r-xl;
         border-top-right-radius: Theme.r-xl;
@@ -156,3 +173,4 @@ export component PhoneSheet inherits Rectangle {
         }
     }
 }
+

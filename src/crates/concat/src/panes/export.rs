@@ -212,11 +212,14 @@ impl ExportPane {
                 self.written = written.clone();
                 // A phone moves the file to where its gallery shows it, and
                 // the sheet says "finished" once it is there.
+                #[cfg(not(target_os = "android"))]
                 let handed = platform::publish_export(written.into(), |result| {
                     on_ui(move |studio, _, _| {
                         studio.handle(Msg::Export(ExportMsg::Published(result)));
                     });
                 });
+                #[cfg(target_os = "android")]
+                let handed = platform::published_folder().is_some();
                 if !handed {
                     studio.notify(&t("export.exportFinished"), false);
                 }
@@ -386,7 +389,9 @@ impl ExportPane {
         } else {
             None
         };
-        if let Some(index) = wanted.and_then(|codec| VideoCodec::ALL.iter().position(|c| *c == codec)) {
+        if let Some(index) =
+            wanted.and_then(|codec| VideoCodec::ALL.iter().position(|c| *c == codec))
+        {
             self.codec = index;
         }
     }
@@ -475,6 +480,15 @@ impl ExportPane {
                 return;
             }
         };
+        #[cfg(target_os = "android")]
+        let service = match platform::ExportServiceGuard::start(job.cancel_handle()) {
+            Ok(service) => service,
+            Err(error) => {
+                self.phase = ExportPhase::Failed;
+                self.message = error;
+                return;
+            }
+        };
         let Some(session) = studio.session.as_ref() else {
             return;
         };
@@ -539,7 +553,7 @@ impl ExportPane {
         spawn(
             move || {
                 let job = job;
-                export::run_on(&request, compositor, job.cancel_flag(), |progress| {
+                let result = export::run_on(&request, compositor, job.cancel_flag(), |progress| {
                     let fraction = if progress.total > 0 {
                         progress.frame as f32 / progress.total as f32
                     } else {
@@ -552,12 +566,48 @@ impl ExportPane {
                         "muxing" => t("export.finalisingFile"),
                         other => other.to_owned(),
                     };
+                    #[cfg(target_os = "android")]
+                    service.progress(fraction, &stage);
                     on_ui(move |studio, _, _| {
                         studio.handle(Msg::Export(ExportMsg::Progress { fraction, stage }));
                     });
-                })
+                });
+                #[cfg(target_os = "android")]
+                {
+                    let published = if job.cancelled() {
+                        None
+                    } else if let Ok(path) = &result {
+                        service.progress(1.0, "saving_to_gallery");
+                        platform::publish_export_on_worker(std::path::Path::new(path))
+                    } else {
+                        None
+                    };
+                    let result = if job.cancelled() {
+                        Err("Export cancelled".into())
+                    } else {
+                        result
+                    };
+                    // The guard and the job are held through the MediaStore copy.
+                    drop(service);
+                    (result, published)
+                }
+                #[cfg(not(target_os = "android"))]
+                {
+                    result
+                }
             },
-            |studio, _, _, result| studio.handle(Msg::Export(ExportMsg::Finished(result))),
+            |studio, _, _, result| {
+                #[cfg(target_os = "android")]
+                {
+                    let (result, published) = result;
+                    studio.handle(Msg::Export(ExportMsg::Finished(result)));
+                    if let Some(published) = published {
+                        studio.handle(Msg::Export(ExportMsg::Published(published)));
+                    }
+                }
+                #[cfg(not(target_os = "android"))]
+                studio.handle(Msg::Export(ExportMsg::Finished(result)));
+            },
         );
     }
 
@@ -745,3 +795,4 @@ mod tests {
         assert_eq!(ExportPane::rate_name((12500, 1000)), "12.5 fps");
     }
 }
+

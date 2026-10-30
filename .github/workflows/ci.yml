@@ -55,6 +55,7 @@ jobs:
       # Every string the interface shows is a key in a locale file; this
       # keeps en.json the inventory of them and every shipped language
       # keyed off it. See TRANSLATING.md.
+      - run: python3 scripts/ci/test-android-service.py
       - run: python3 scripts/locales.py --check
         if: ${{ !cancelled() }}
       # The models Concat downloads are mirrored onto a release of this
@@ -423,3 +424,4 @@ jobs:
             src/target/nextest/ci/*.xml
             src/nextest-*.log
           if-no-files-found: ignore
+

@@ -1185,3 +1185,61 @@ mod tests {
         );
     }
 }
+
+/// Android's foreground-service bridge. Installed before the editor starts.
+#[cfg(target_os = "android")]
+pub struct ExportService {
+    /// Starts while the activity is visible, before any export work is queued.
+    pub start: Box<
+        dyn Fn(std::sync::Arc<std::sync::atomic::AtomicBool>) -> Result<i64, String> + Send + Sync,
+    >,
+    /// Reports directly from the worker, independently of Slint's event loop.
+    pub progress: Box<dyn Fn(i64, f32, &str) + Send + Sync>,
+    /// Stops only the identified session; stale messages cannot stop a new export.
+    pub stop: Box<dyn Fn(i64) + Send + Sync>,
+}
+#[cfg(target_os = "android")]
+static EXPORT_SERVICE: std::sync::OnceLock<ExportService> = std::sync::OnceLock::new();
+
+/// Installs the Android foreground-service implementation once.
+#[cfg(target_os = "android")]
+pub fn install_export_service(service: ExportService) {
+    let _ = EXPORT_SERVICE.set(service);
+}
+
+/// Owns the service until rendering AND publication finish, including unwinding.
+#[cfg(target_os = "android")]
+pub struct ExportServiceGuard(i64);
+#[cfg(target_os = "android")]
+impl ExportServiceGuard {
+    /// Starts the service, or fails the export before rendering without protection.
+    pub fn start(cancel: std::sync::Arc<std::sync::atomic::AtomicBool>) -> Result<Self, String> {
+        let service = EXPORT_SERVICE
+            .get()
+            .ok_or("Android export service is unavailable")?;
+        (service.start)(cancel).map(Self)
+    }
+    /// Updates the persistent notification without going through the UI.
+    pub fn progress(&self, fraction: f32, stage: &str) {
+        if let Some(service) = EXPORT_SERVICE.get() {
+            (service.progress)(self.0, fraction, stage);
+        }
+    }
+}
+#[cfg(target_os = "android")]
+impl Drop for ExportServiceGuard {
+    fn drop(&mut self) {
+        if let Some(service) = EXPORT_SERVICE.get() {
+            (service.stop)(self.0);
+        }
+    }
+}
+
+/// Publishes on the export worker, so suspension of Slint cannot delay the copy.
+#[cfg(target_os = "android")]
+pub fn publish_export_on_worker(path: &std::path::Path) -> Option<Result<String, String>> {
+    EXPORT_PUBLISHER
+        .get()
+        .map(|publisher| (publisher.publish)(path))
+}
+

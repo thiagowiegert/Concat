@@ -41,7 +41,7 @@ export component RoundButton inherits Rectangle {
         : touch.pressed ? Theme.field-active
         : Colors.transparent;
 
-    animate background { duration: 100ms; easing: cubic-bezier(0.4, 0, 0.2, 1); }
+    animate background { duration: 90ms; easing: cubic-bezier(0.4, 0, 0.2, 1); }
 
     Icon {
         x: (parent.width - self.width) / 2;
@@ -95,7 +95,7 @@ export component ToolItem inherits Rectangle {
     opacity: root.enabled ? 1.0 : 0.35;
     background: touch.pressed ? Theme.field-active : Colors.transparent;
 
-    animate background { duration: 100ms; easing: cubic-bezier(0.4, 0, 0.2, 1); }
+    animate background { duration: 90ms; easing: cubic-bezier(0.4, 0, 0.2, 1); }
 
     VerticalLayout {
         alignment: center;
@@ -169,3 +169,4 @@ export component PhoneScroll inherits Flickable {
         @children
     }
 }
+

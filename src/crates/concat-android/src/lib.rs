@@ -191,6 +191,24 @@ mod java {
         };
         // SAFETY: as above.
         unsafe { env.register_native_methods(&class, &[method]) }?;
+        // SAFETY: matches ConcatFiles.exportCancelled(long).
+        let cancel = unsafe {
+            jni::NativeMethod::from_raw_parts(
+                jni_str!("exportCancelled"),
+                jni_str!("(J)V"),
+                super::export_service::cancelled as *mut c_void,
+            )
+        };
+        unsafe { env.register_native_methods(&class, &[cancel]) }?;
+        // SAFETY: matches ConcatFiles.exportIsCancelled().
+        let is_cancelled = unsafe {
+            jni::NativeMethod::from_raw_parts(
+                jni_str!("exportIsCancelled"),
+                jni_str!("()Z"),
+                super::export_service::is_cancelled as *mut c_void,
+            )
+        };
+        unsafe { env.register_native_methods(&class, &[is_cancelled]) }?;
         env.new_global_ref(class)
     }
 }
@@ -508,6 +526,9 @@ mod links {
     }
 }
 
+#[cfg(target_os = "android")]
+mod export_service;
+
 /// Called by the activity's native glue; the name is the contract.
 #[cfg(target_os = "android")]
 #[unsafe(no_mangle)]
@@ -525,7 +546,9 @@ fn android_main(app: slint::android::AndroidApp) {
     publisher::install(&app);
     microphone::install(&app);
     links::install(&app);
+    export_service::install(&app);
     if let Err(error) = concat::run() {
         log::error!("{error}");
     }
 }
+
