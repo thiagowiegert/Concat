@@ -114,5 +114,6 @@ pub(super) unsafe extern "system" fn is_cancelled(
                 .is_none_or(|(_, cancel)| cancel.load(Ordering::Relaxed))
         })
         .unwrap_or(true);
-    u8::from(cancelled)
+    cancelled
 }
+
