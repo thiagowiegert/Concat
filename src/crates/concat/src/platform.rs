@@ -1242,4 +1242,3 @@ pub fn publish_export_on_worker(path: &std::path::Path) -> Option<Result<String,
         .get()
         .map(|publisher| (publisher.publish)(path))
 }
-

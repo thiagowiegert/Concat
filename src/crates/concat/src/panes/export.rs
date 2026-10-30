@@ -795,4 +795,3 @@ mod tests {
         assert_eq!(ExportPane::rate_name((12500, 1000)), "12.5 fps");
     }
 }
-
